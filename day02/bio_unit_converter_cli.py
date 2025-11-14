@@ -210,7 +210,7 @@ def main(argv=None):
         else:
             parser.error("Unknown command")
             return 2
-        print(f"{out:.10g}")
+        print(f"{out:.10g} {args.to_unit}")
         return 0
     except Exception as e:
         sys.stderr.write(str(e) + "\n")
