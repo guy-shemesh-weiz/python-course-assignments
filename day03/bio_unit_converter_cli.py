@@ -32,102 +32,144 @@ def _ascii_to_lib(u: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Biology Unit Converter CLI (ASCII-only units). "
-        "Use subcommands for volume, mass, conc, and cross-family conversions.",
+        prog="bio_unit_converter_cli.py",
+        description=(
+            "Biology Unit Converter CLI - Convert between common biological units\n\n"
+            "This tool supports conversions within three main families:\n"
+            "  • Volume (L, mL, uL, nL)\n"
+            "  • Mass (kg, g, mg, ug, ng)\n"
+            "  • Concentration (molarity and mass concentration)\n\n"
+            "For conversions between molarity and mass concentration, "
+            "you must provide the molar mass (--mw) of the substance."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "EXAMPLES:\n"
+            "  # Convert volumes\n"
+            "  python bio_unit_converter_cli.py volume 2 mL uL\n"
+            "  python bio_unit_converter_cli.py volume 1.5 L mL\n\n"
+            "  # Convert masses\n"
+            "  python bio_unit_converter_cli.py mass 5 mg ug\n"
+            "  python bio_unit_converter_cli.py mass 0.5 kg g\n\n"
+            "  # Convert concentrations (within family)\n"
+            "  python bio_unit_converter_cli.py conc 3 mM uM\n"
+            "  python bio_unit_converter_cli.py conc 1 mg/mL g/L\n\n"
+            "  # Cross-family conversions (requires molar mass)\n"
+            "  python bio_unit_converter_cli.py molarity-to-massconc 50 uM mg/L --mw 180.156\n"
+            "  python bio_unit_converter_cli.py massconc-to-molarity 0.9 %%w/v mM --mw 58.44\n\n"
+            "For help on a specific command: python bio_unit_converter_cli.py COMMAND -h"
+        ),
     )
     sub = p.add_subparsers(dest="cmd", required=True, metavar="COMMAND")
 
     # volume
     pv = sub.add_parser(
         "volume",
-        help="Convert volume units",
+        help="Convert volume units (L, mL, uL, nL)",
         description=(
-            f"Convert volume between units.\nSupported units: {', '.join(conv.ASCII_VOLUME)}"
+            "Convert volume between units.\n\n"
+            f"Supported units: {', '.join(conv.ASCII_VOLUME)}\n\n"
+            "Examples:\n"
+            "  python bio_unit_converter_cli.py volume 2 mL uL\n"
+            "  python bio_unit_converter_cli.py volume 0.5 L mL"
         ),
     )
     pv.add_argument("value", type=float, help="Numeric value to convert (e.g., 2.5)")
     pv.add_argument(
-    "from_unit", type=str, help=f"Source unit ({', '.join(conv.ASCII_VOLUME)})"
+    "from_unit", type=str, help=f"Source unit (e.g., mL, uL, L, nL)"
     )
     pv.add_argument(
-    "to_unit", type=str, help=f"Target unit ({', '.join(conv.ASCII_VOLUME)})"
+    "to_unit", type=str, help=f"Target unit (e.g., mL, uL, L, nL)"
     )
 
     # mass
     pm = sub.add_parser(
         "mass",
-        help="Convert mass units",
+        help="Convert mass units (kg, g, mg, ug, ng)",
         description=(
-            f"Convert mass between units.\nSupported units: {', '.join(conv.ASCII_MASS)}"
+            "Convert mass between units.\n\n"
+            f"Supported units: {', '.join(conv.ASCII_MASS)}\n\n"
+            "Examples:\n"
+            "  python bio_unit_converter_cli.py mass 5 mg ug\n"
+            "  python bio_unit_converter_cli.py mass 0.1 g mg"
         ),
     )
     pm.add_argument("value", type=float, help="Numeric value to convert")
     pm.add_argument(
-    "from_unit", type=str, help=f"Source unit ({', '.join(conv.ASCII_MASS)})"
+    "from_unit", type=str, help=f"Source unit (e.g., mg, ug, g, ng, kg)"
     )
-    pm.add_argument("to_unit", type=str, help=f"Target unit ({', '.join(conv.ASCII_MASS)})")
+    pm.add_argument("to_unit", type=str, help=f"Target unit (e.g., mg, ug, g, ng, kg)")
 
     # conc within-family
     pc = sub.add_parser(
         "conc",
-        help="Convert concentration within SAME family",
+        help="Convert concentrations within the SAME family",
         description=(
-            "Convert concentration within the same family ONLY.\n"
+            "Convert concentration within the same family ONLY.\n\n"
             f"Molarity units: {', '.join(conv.ASCII_MOLAR)}\n"
-            f"Mass concentration units: {', '.join(conv.ASCII_MASSCONC).replace('%', '%%')}\n"
+            f"Mass concentration units: {', '.join(conv.ASCII_MASSCONC).replace('%', '%%')}\n\n"
             "NOTE: For cross-family conversions (molarity <-> mass concentration), "
-            "use the dedicated commands that require --mw."
+            "use the dedicated 'molarity-to-massconc' or 'massconc-to-molarity' commands "
+            "which require --mw (molar mass).\n\n"
+            "Examples:\n"
+            "  python bio_unit_converter_cli.py conc 3 mM uM\n"
+            "  python bio_unit_converter_cli.py conc 1 mg/mL g/L"
         ),
     )
     pc.add_argument("value", type=float, help="Numeric value to convert")
-    pc.add_argument("from_unit", type=str, help=f"Source unit (molarity or mass-conc)")
-    pc.add_argument("to_unit", type=str, help=f"Target unit (same family as source)")
+    pc.add_argument("from_unit", type=str, help=f"Source unit (molarity: M, mM, uM, nM OR mass-conc: g/L, mg/mL, ug/mL, ng/uL, mg/L, ug/L, ng/L, %%w/v)")
+    pc.add_argument("to_unit", type=str, help=f"Target unit (must be same family as source)")
 
     # molarity to mass concentration
     pmtmc = sub.add_parser(
         "molarity-to-massconc",
-        help="Molarity -> Mass concentration (requires --mw)",
+        help="Convert molarity to mass concentration (requires molar mass)",
         description=(
-            "Convert molarity to mass concentration.\n"
+            "Convert molarity to mass concentration.\n\n"
             f"Molarity units: {', '.join(conv.ASCII_MOLAR)}\n"
-            f"Mass concentration units: {', '.join(conv.ASCII_MASSCONC).replace('%', '%%')}\n"
-            "Requires molar mass (g/mol) via --mw."
+            f"Mass concentration units: {', '.join(conv.ASCII_MASSCONC).replace('%', '%%')}\n\n"
+            "REQUIRED: Molar mass (--mw) in g/mol\n\n"
+            "Examples:\n"
+            "  python bio_unit_converter_cli.py molarity-to-massconc 50 uM mg/L --mw 180.156\n"
+            "  python bio_unit_converter_cli.py molarity-to-massconc 1 M g/L --mw 58.44"
         ),
     )
     pmtmc.add_argument("value", type=float, help="Numeric value to convert")
     pmtmc.add_argument(
-    "from_unit", type=str, help=f"Source molarity unit ({', '.join(conv.ASCII_MOLAR)})"
+    "from_unit", type=str, help=f"Source molarity unit (M, mM, uM, nM)"
     )
     pmtmc.add_argument(
-    "to_unit", type=str, help=f"Target mass-conc unit ({', '.join(conv.ASCII_MASSCONC).replace('%', '%%')})"
+    "to_unit", type=str, help=f"Target mass-conc unit (g/L, mg/mL, ug/mL, ng/uL, mg/L, ug/L, ng/L, %%w/v)"
     )
     pmtmc.add_argument(
         "--mw",
         type=float,
         required=True,
-        help="Molar mass in g/mol (e.g., 58.44 for NaCl)",
+        help="Molar mass in g/mol (e.g., 180.156 for glucose, 58.44 for NaCl)",
     )
 
     # mass concentration to molarity
     pmctm = sub.add_parser(
         "massconc-to-molarity",
-        help="Mass concentration -> Molarity (requires --mw)",
+        help="Convert mass concentration to molarity (requires molar mass)",
         description=(
-            "Convert mass concentration to molarity.\n"
+            "Convert mass concentration to molarity.\n\n"
             f"Mass concentration units: {', '.join(conv.ASCII_MASSCONC).replace('%', '%%')}\n"
-            f"Molarity units: {', '.join(conv.ASCII_MOLAR)}\n"
-            "Requires molar mass (g/mol) via --mw."
+            f"Molarity units: {', '.join(conv.ASCII_MOLAR)}\n\n"
+            "REQUIRED: Molar mass (--mw) in g/mol\n\n"
+            "Examples:\n"
+            "  python bio_unit_converter_cli.py massconc-to-molarity 0.9 %%w/v mM --mw 58.44\n"
+            "  python bio_unit_converter_cli.py massconc-to-molarity 10 g/L uM --mw 180.156"
         ),
     )
     pmctm.add_argument("value", type=float, help="Numeric value to convert")
     pmctm.add_argument(
-    "from_unit", type=str, help=f"Source mass-conc unit ({', '.join(conv.ASCII_MASSCONC).replace('%', '%%')})"
+    "from_unit", type=str, help=f"Source mass-conc unit (g/L, mg/mL, ug/mL, ng/uL, mg/L, ug/L, ng/L, %%w/v)"
     )
     pmctm.add_argument(
-    "to_unit", type=str, help=f"Target molarity unit ({', '.join(conv.ASCII_MOLAR)})"
+    "to_unit", type=str, help=f"Target molarity unit (M, mM, uM, nM)"
     )
-    pmctm.add_argument("--mw", type=float, required=True, help="Molar mass in g/mol")
+    pmctm.add_argument("--mw", type=float, required=True, help="Molar mass in g/mol (e.g., 58.44 for NaCl, 180.156 for glucose)")
 
     return p
 
@@ -168,7 +210,7 @@ def main(argv=None):
         else:
             parser.error("Unknown command")
             return 2
-        print(f"{out:.10g}")
+        print(f"{out:.10g} {args.to_unit}")
         return 0
     except Exception as e:
         sys.stderr.write(str(e) + "\n")

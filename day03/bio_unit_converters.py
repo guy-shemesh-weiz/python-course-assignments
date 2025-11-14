@@ -1,7 +1,7 @@
 """
 bio_unit_converters.py
 ----------------------
-A pure-library module with functions to convert common biology units.
+A pure-library module with functions to convert common biology units using Pint.
 
 Supported:
 - Volume: L, mL, µL/uL, nL
@@ -14,46 +14,10 @@ Cross-family conversions:
 """
 
 from __future__ import annotations
+import pint
 
-# -------- Volume --------
-_VOLUME_TO_L = {
-    "l": 1.0,
-    "ml": 1e-3,
-    "µl": 1e-6, "ul": 1e-6,
-    "nl": 1e-9,
-}
-
-# -------- Mass --------
-_MASS_TO_G = {
-    "kg": 1e3,
-    "g": 1.0,
-    "mg": 1e-3,
-    "µg": 1e-6, "ug": 1e-6,
-    "ng": 1e-9,
-}
-
-# -------- Concentration (within type) --------
-# Molarity base: mol/L
-_MOLARITY_TO_M = {
-    "m": 1.0,
-    "mm": 1e-3,
-    "µm": 1e-6, "um": 1e-6,
-    "nm": 1e-9,
-}
-
-# Mass concentration base: g/L
-_MASSCONC_TO_G_PER_L = {
-    "g/l": 1.0,
-    "mg/ml": 1e0,     # 1 mg/mL = 1 g/L
-    "µg/ml": 1e-3, "ug/ml": 1e-3,
-    "ng/µl": 1e-3, "ng/ul": 1e-3,  # 1 ng/µL = 1 mg/L = 0.001 g/L
-    "mg/l": 1e-3,
-    "µg/l": 1e-6, "ug/l": 1e-6,
-    "ng/l": 1e-9,
-    "mg/µl": 1e3, "mg/ul": 1e3,  # rare but defined
-    # Include percent w/v (% w/v) as g/100 mL = 10 g/L
-    "%w/v": 10.0,
-}
+# Initialize unit registry
+ureg = pint.UnitRegistry()
 
 # ------- Public unit lists (canonical, single source-of-truth for frontends) -------
 # These are presentation-friendly unit lists (mixed-case) used by the CLIs/GUI.
@@ -83,26 +47,116 @@ ASCII_MASSCONC = [u.replace("µ", "u") for u in MASSCONC_UNITS]
 def _normalize_unit(u: str) -> str:
     """Lowercase, trim, and normalize micro symbol (μ -> µ)."""
     u = u.strip().lower().replace("μ", "µ")
+    # Map unicode micro to pint's format (u)
+    u = u.replace("µ", "u")
+    # Important: handle molar units (m, mm, um, nm) before converting to mL, mm etc.
+    # Pint uses 'molar' for molarity, so we need to map properly
     return u
+
+
+def _unit_to_pint_string(unit: str) -> str:
+    """Convert our unit notation to Pint-compatible notation.
+    
+    This handles special cases like:
+    - mM (millimolar) -> millimol/liter (not millimeter)
+    - uM (micromolar) -> micromol/liter
+    - M (molar) -> mol/liter
+    - µM (micromolar using unicode) -> micromol/liter
+    - ug/mL -> microgram/milliliter
+    """
+    unit_lower = unit.strip().lower().replace("μ", "u")
+    
+    # Map MOLARITY units explicitly first (before checking for other micro units)
+    molarity_map = {
+        "m": "mol/L",
+        "mm": "mmol/L",
+        "um": "umol/L",
+        "µm": "umol/L",
+        "nm": "nmol/L",
+    }
+    
+    if unit_lower in molarity_map:
+        return molarity_map[unit_lower]
+    
+    # For mass concentration and other units, replace only the 'u' that means micro
+    # when NOT followed by 'l' (which would be the start of mol)
+    # Map common chemistry units
+    massconc_map = {
+        "g/l": "g/L",
+        "mg/ml": "mg/mL",
+        "ug/ml": "ug/mL",
+        "mg/l": "mg/L",
+        "ug/l": "ug/L",
+        "ng/l": "ng/L",
+        "ng/ul": "ng/uL",
+        "mg/ul": "mg/uL",
+    }
+    
+    if unit_lower in massconc_map:
+        return massconc_map[unit_lower]
+    
+    # Return as-is for other units (pint should understand them)
+    return unit_lower
+
+
+def _pint_convert(value: float, from_unit: str, to_unit: str) -> float:
+    """Helper function to perform unit conversion using Pint.
+    
+    Args:
+        value: numeric value
+        from_unit: source unit string
+        to_unit: target unit string
+    
+    Returns:
+        converted numeric value
+    
+    Raises:
+        ValueError: if units are incompatible or unsupported
+    """
+    try:
+        # Normalize units: handle unicode micro and convert to pint format
+        from_unit_norm = _unit_to_pint_string(from_unit)
+        to_unit_norm = _unit_to_pint_string(to_unit)
+        
+        # Handle special case: %w/v (percent w/v) -> convert to g/L for pint
+        if _normalize_unit(from_unit) == "%w/v":
+            from_unit_norm = "g/L"
+            value = value * 10  # %w/v is 10 g/L
+        if _normalize_unit(to_unit) == "%w/v":
+            to_unit_norm = "g/L"
+        
+        # Create quantities and convert
+        q = ureg.Quantity(value, from_unit_norm)
+        result = q.to(to_unit_norm)
+        
+        # If target was %w/v, convert back
+        if to_unit_norm == "g/L" and _normalize_unit(to_unit) == "%w/v":
+            return result.magnitude / 10
+        
+        return result.magnitude
+    except pint.UndefinedUnitError as e:
+        raise ValueError(f"Unsupported unit: {str(e)}")
+    except pint.DimensionalityError as e:
+        raise ValueError(f"Incompatible units: {str(e)}")
+    except Exception as e:
+        raise ValueError(f"Conversion error: {str(e)}")
 
 # ---------------- Public API ----------------
 def convert_volume(value: float, from_unit: str, to_unit: str) -> float:
     """Convert volume between L, mL, µL/uL, nL."""
-    fu = _normalize_unit(from_unit)
-    tu = _normalize_unit(to_unit)
-    if fu not in _VOLUME_TO_L or tu not in _VOLUME_TO_L:
-        raise ValueError(f"Unsupported volume unit. Supported: {sorted(_VOLUME_TO_L.keys())}")
-    liters = value * _VOLUME_TO_L[fu]
-    return liters / _VOLUME_TO_L[tu]
+    try:
+        return _pint_convert(value, from_unit, to_unit)
+    except ValueError as e:
+        raise ValueError(f"Unsupported volume unit. Supported: {', '.join(VOLUME_UNITS)}. Error: {str(e)}")
+
 
 def convert_mass(value: float, from_unit: str, to_unit: str) -> float:
     """Convert mass between kg, g, mg, µg/ug, ng."""
-    fu = _normalize_unit(from_unit)
-    tu = _normalize_unit(to_unit)
-    if fu not in _MASS_TO_G or tu not in _MASS_TO_G:
-        raise ValueError(f"Unsupported mass unit. Supported: {sorted(_MASS_TO_G.keys())}")
-    grams = value * _MASS_TO_G[fu]
-    return grams / _MASS_TO_G[tu]
+    try:
+        return _pint_convert(value, from_unit, to_unit)
+    except ValueError as e:
+        raise ValueError(f"Unsupported mass unit. Supported: {', '.join(MASS_UNITS)}. Error: {str(e)}")
+
 
 def convert_concentration(value: float, from_unit: str, to_unit: str) -> float:
     """Convert concentration within the same family (molarity or mass-concentration).
@@ -114,17 +168,24 @@ def convert_concentration(value: float, from_unit: str, to_unit: str) -> float:
       - molarity_to_mass_conc(..., mw_g_per_mol)
       - mass_conc_to_molarity(..., mw_g_per_mol)
     """
-    fu = _normalize_unit(from_unit)
-    tu = _normalize_unit(to_unit)
-    in_molar = fu in _MOLARITY_TO_M and tu in _MOLARITY_TO_M
-    in_massc = fu in _MASSCONC_TO_G_PER_L and tu in _MASSCONC_TO_G_PER_L
-    if in_molar:
-        molar = value * _MOLARITY_TO_M[fu]
-        return molar / _MOLARITY_TO_M[tu]
-    if in_massc:
-        g_per_l = value * _MASSCONC_TO_G_PER_L[fu]
-        return g_per_l / _MASSCONC_TO_G_PER_L[tu]
-    raise ValueError("Cross-family conversion requested; use molarity_to_mass_conc or mass_conc_to_molarity with molar mass.")
+    from_unit_norm = _normalize_unit(from_unit)
+    to_unit_norm = _normalize_unit(to_unit)
+    
+    # Check if both are in the same family
+    molarity_units = [_normalize_unit(u) for u in MOLAR_UNITS]
+    massconc_units = [_normalize_unit(u) for u in MASSCONC_UNITS]
+    
+    in_molar = from_unit_norm in molarity_units and to_unit_norm in molarity_units
+    in_massc = from_unit_norm in massconc_units and to_unit_norm in massconc_units
+    
+    if not (in_molar or in_massc):
+        raise ValueError("Cross-family conversion requested; use molarity_to_mass_conc or mass_conc_to_molarity with molar mass.")
+    
+    try:
+        return _pint_convert(value, from_unit, to_unit)
+    except ValueError as e:
+        raise ValueError(f"Concentration conversion error: {str(e)}")
+
 
 def molarity_to_mass_conc(value: float, from_unit: str, to_unit: str, mw_g_per_mol: float) -> float:
     """Convert molarity (M family) -> mass concentration (g/L family).
@@ -135,27 +196,64 @@ def molarity_to_mass_conc(value: float, from_unit: str, to_unit: str, mw_g_per_m
         to_unit: e.g., 'g/L', 'mg/mL', 'mg/L', '%w/v'
         mw_g_per_mol: molar mass in g/mol
     """
-    fu = _normalize_unit(from_unit)
-    tu = _normalize_unit(to_unit)
-    if fu not in _MOLARITY_TO_M:
-        raise ValueError("from_unit must be a molarity unit like M, mM, µM/uM, nM")
-    if tu not in _MASSCONC_TO_G_PER_L:
-        raise ValueError("to_unit must be a mass concentration unit like g/L, mg/mL, mg/L, %w/v")
-    mol_per_l = value * _MOLARITY_TO_M[fu]
-    g_per_l = mol_per_l * mw_g_per_mol
-    return g_per_l / _MASSCONC_TO_G_PER_L[tu]
+    try:
+        from_unit_pint = _unit_to_pint_string(from_unit)
+        to_unit_norm = _normalize_unit(to_unit)
+        
+        # Step 1: Convert the molarity value to mol/L
+        molarity_value = ureg.Quantity(value, from_unit_pint)
+        mol_per_l = molarity_value.to("mol/L").magnitude
+        
+        # Step 2: Convert mol/L to g/L using the molar mass
+        g_per_l_value = mol_per_l * mw_g_per_mol
+        
+        # Step 3: Handle special case: %w/v
+        if to_unit_norm == "%w/v":
+            # %w/v is g/100mL = 10 g/L
+            return g_per_l_value / 10.0
+        
+        # Step 4: Convert from g/L to target mass concentration unit
+        g_per_l_quantity = ureg.Quantity(g_per_l_value, "g/L")
+        to_unit_pint = _unit_to_pint_string(to_unit)
+        result = g_per_l_quantity.to(to_unit_pint)
+        return result.magnitude
+    except pint.UndefinedUnitError as e:
+        raise ValueError(f"Unsupported unit: {str(e)}")
+    except pint.DimensionalityError as e:
+        raise ValueError(f"Incompatible units: {str(e)}")
+    except Exception as e:
+        raise ValueError(f"Conversion error: {str(e)}")
+
 
 def mass_conc_to_molarity(value: float, from_unit: str, to_unit: str, mw_g_per_mol: float) -> float:
     """Convert mass concentration (g/L family) -> molarity (M family)."""
-    fu = _normalize_unit(from_unit)
-    tu = _normalize_unit(to_unit)
-    if fu not in _MASSCONC_TO_G_PER_L:
-        raise ValueError("from_unit must be a mass concentration unit like g/L, mg/mL, mg/L, %w/v")
-    if tu not in _MOLARITY_TO_M:
-        raise ValueError("to_unit must be a molarity unit like M, mM, µM/uM, nM")
-    g_per_l = value * _MASSCONC_TO_G_PER_L[fu]
-    mol_per_l = g_per_l / mw_g_per_mol
-    return mol_per_l / _MOLARITY_TO_M[tu]
+    try:
+        from_unit_norm = _normalize_unit(from_unit)
+        to_unit_pint = _unit_to_pint_string(to_unit)
+        
+        # Handle special case: %w/v
+        if from_unit_norm == "%w/v":
+            # %w/v is g/100mL = 10 g/L
+            g_per_l_value = value * 10
+        else:
+            # Convert to g/L first using pint
+            from_unit_pint = _unit_to_pint_string(from_unit)
+            mass_conc = ureg.Quantity(value, from_unit_pint)
+            g_per_l_value = mass_conc.to(ureg.g / ureg.L).magnitude
+        
+        # Convert g/L to molarity using molar mass
+        mol_per_l = g_per_l_value / mw_g_per_mol
+        molarity = ureg.Quantity(mol_per_l, "mol/L")
+        
+        # Convert to target unit
+        result = molarity.to(to_unit_pint)
+        return result.magnitude
+    except pint.UndefinedUnitError as e:
+        raise ValueError(f"Unsupported unit: {str(e)}")
+    except pint.DimensionalityError as e:
+        raise ValueError(f"Incompatible units: {str(e)}")
+    except Exception as e:
+        raise ValueError(f"Conversion error: {str(e)}")
 
 __all__ = [
     "convert_volume",
@@ -163,4 +261,12 @@ __all__ = [
     "convert_concentration",
     "molarity_to_mass_conc",
     "mass_conc_to_molarity",
+    "VOLUME_UNITS",
+    "MASS_UNITS",
+    "MOLAR_UNITS",
+    "MASSCONC_UNITS",
+    "ASCII_VOLUME",
+    "ASCII_MASS",
+    "ASCII_MOLAR",
+    "ASCII_MASSCONC",
 ]
