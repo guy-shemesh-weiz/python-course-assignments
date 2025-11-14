@@ -13,3 +13,7 @@ I decided to use AI entirely for this project. While searching for ideas, I chos
 6. wrote error that I got when manually tested the program
 7. "please make sure that the codebase is written with high standard"
 8. "please add more tests"
+
+### HW3
+
+1. Moved to use pint in order for the buisness logic
