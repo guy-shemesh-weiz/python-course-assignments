@@ -1,0 +1,2 @@
+# Ignore local cache file (contains cached gene data)
+cache.json
