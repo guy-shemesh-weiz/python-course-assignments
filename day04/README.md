@@ -14,14 +14,6 @@ I built this tool because I once tried to classify genes based on their function
 - **Comprehensive Testing**: 16 unit tests, all passing, with mocked API responses
 - **No API Keys Required**: All public APIs, no credentials needed
 
-## Quick Start
-
-### Installation (one-time)
-
-```bash
-cd /home/guy/guy/biology/courses/oct_2025/basic_programming_skills/python-course-assignments/day04
-python3 -m pip install --user -r requirements.txt
-```
 
 ### Quick Fetch (one or more genes)
 
@@ -72,18 +64,6 @@ python3 -m pytest test_genecli.py -v
 python3 -m pytest test_genecli.py -q
 ```
 
-## Project Structure
-
-```
-day04/
-├── business.py              # Core business logic & caching (no user I/O)
-├── cli.py                   # User interface & formatting
-├── test_genecli.py          # Unit tests (16 tests, all passing)
-├── __init__.py              # Package marker
-├── requirements.txt         # Dependencies (requests)
-├── .gitignore               # Excludes in-project cache
-├── README.md                # This file
-```
 
 ## How It Works
 
@@ -162,13 +142,6 @@ $ python3 cli.py BRCA1
 BRCA1 | Entrez:672 | Chr:17 | Loc:17q21.31
 ...
 ```
-
-## Security & Privacy
-
-✅ No sensitive information uploaded to git  
-✅ Cache stored in project directory (excluded via `.gitignore`)  
-✅ No API keys required (all public APIs)  
-✅ `.gitignore` prevents accidental cache file commits
 
 ## Testing
 
