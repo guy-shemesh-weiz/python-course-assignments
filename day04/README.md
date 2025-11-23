@@ -281,3 +281,9 @@ This project was developed through an iterative conversation with GitHub Copilot
 - The cache file is stored in the local directory
 - No API keys are required for basic queries. The script uses only public APIs
 - For very large gene lists, consider processing in batches to avoid rate limiting
+
+
+## Links
+
+- https://genealacart.genecards.org
+- https://clinicaltables.nlm.nih.gov
