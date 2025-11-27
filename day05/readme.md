@@ -10,5 +10,5 @@ For every guess, the codemaker provides feedback in the form of * and + signs:
     - A * indicates a correct digit in the **correct** position.
     - A + indicates a correct digit in the **wrong** position.
 
-### Starting the Game
+### Playing the Game
 `python mastermind.py`
